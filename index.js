@@ -102,14 +102,78 @@ const FLUX_MODELS = {
   },
 };
 
+// Helper function to validate and sanitize download path
+function validateDownloadPath(userPath) {
+  // Expand ~ to home directory
+  const expandedPath = userPath.replace(/^~/, process.env.HOME || "");
+
+  // Resolve to absolute path and normalize
+  const absolutePath = path.resolve(expandedPath);
+
+  // Security check: Ensure path doesn't escape to parent directories
+  const homePath = process.env.HOME || "";
+  const allowedPaths = [
+    homePath,
+    "/tmp",
+    path.join(process.cwd(), "downloads"),
+  ];
+
+  // Check if the resolved path is within allowed directories
+  const isAllowed = allowedPaths.some(allowedPath => {
+    return absolutePath.startsWith(path.resolve(allowedPath));
+  });
+
+  if (!isAllowed) {
+    throw new Error(`Download path must be within home directory, /tmp, or project downloads folder. Got: ${absolutePath}`);
+  }
+
+  return absolutePath;
+}
+
+// Helper function to validate URL is from Replicate
+function validateReplicateUrl(url) {
+  try {
+    const parsed = new URL(url);
+
+    // Only allow HTTPS
+    if (parsed.protocol !== "https:") {
+      throw new Error("Only HTTPS URLs are allowed");
+    }
+
+    // Only allow replicate.delivery domain (Replicate's CDN)
+    if (!parsed.hostname.endsWith("replicate.delivery")) {
+      throw new Error("Only Replicate CDN URLs are allowed");
+    }
+
+    return url;
+  } catch (error) {
+    throw new Error(`Invalid or unsafe URL: ${error.message}`);
+  }
+}
+
 // Helper function to download file from URL
 async function downloadFile(url, filepath) {
+  // Validate URL before downloading
+  validateReplicateUrl(url);
+
   return new Promise((resolve, reject) => {
-    const protocol = url.startsWith("https") ? https : http;
     const file = fsSync.createWriteStream(filepath);
 
-    protocol
+    https
       .get(url, (response) => {
+        // Check for redirects to non-Replicate domains
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          const redirectUrl = response.headers.location;
+          try {
+            validateReplicateUrl(redirectUrl);
+          } catch (error) {
+            file.close();
+            fsSync.unlink(filepath, () => {});
+            reject(new Error("Redirect to unsafe domain detected"));
+            return;
+          }
+        }
+
         response.pipe(file);
         file.on("finish", () => {
           file.close(resolve);
@@ -297,19 +361,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!args.image_path) {
           throw new Error(`Model ${modelId} requires image_path`);
         }
+        // Validate image_path to prevent SSRF
+        // Only allow HTTPS URLs or local file paths (Replicate will handle validation)
+        if (args.image_path.startsWith("http://")) {
+          throw new Error("HTTP URLs not allowed for security reasons. Use HTTPS.");
+        }
         input.image = args.image_path;
       }
 
       // Handle mask for Fill model
       if (modelId.endsWith("/flux-fill-pro") && args.mask_path) {
+        // Same validation for mask paths
+        if (args.mask_path.startsWith("http://")) {
+          throw new Error("HTTP URLs not allowed for security reasons. Use HTTPS.");
+        }
         input.mask = args.mask_path;
       }
 
       // Run the model
       const output = await replicate.run(modelId, { input });
 
-      // Download results
-      const downloadPath = args.download_path.replace(/^~/, process.env.HOME);
+      // Download results - VALIDATE PATH FIRST
+      const downloadPath = validateDownloadPath(args.download_path);
       await fs.mkdir(downloadPath, { recursive: true });
 
       const timestamp = new Date()
@@ -351,11 +424,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         ],
       };
     } catch (error) {
+      // Sanitize error message to avoid leaking sensitive information
+      let safeMessage = "An error occurred while generating the image.";
+
+      // Only expose safe, user-actionable error messages
+      if (error.message.includes("REPLICATE_API_TOKEN")) {
+        safeMessage = "API token is not configured. Please set REPLICATE_API_TOKEN.";
+      } else if (error.message.includes("Unknown model")) {
+        safeMessage = error.message; // Safe to expose model validation errors
+      } else if (error.message.includes("requires image_path")) {
+        safeMessage = error.message; // Safe to expose parameter validation errors
+      } else if (error.message.includes("Download path must be")) {
+        safeMessage = "Invalid download path. Path must be within home directory or /tmp.";
+      } else if (error.message.includes("HTTP URLs not allowed")) {
+        safeMessage = "Only HTTPS URLs are allowed for security reasons.";
+      } else if (error.message.includes("NSFW")) {
+        safeMessage = "Content was flagged by safety filters. Please try a different prompt.";
+      } else if (error.message.includes("Only Replicate CDN")) {
+        safeMessage = "Invalid image source. Only Replicate CDN URLs are allowed.";
+      }
+
+      // Log full error server-side for debugging (not sent to client)
+      console.error("FLUX MCP Error:", error);
+
       return {
         content: [
           {
             type: "text",
-            text: `Error generating image: ${error.message}`,
+            text: `Error: ${safeMessage}`,
           },
         ],
         isError: true,

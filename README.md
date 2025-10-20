@@ -240,6 +240,38 @@ Generate images and save to local disk.
 | **FLUX.1 Depth [dev]** | Structure-preserving style transfer | Yes | Medium | High |
 | **FLUX.1 Canny [pro]** | Sketch-to-image, edge control | Yes | Medium | High |
 
+## Security
+
+This MCP server implements multiple security measures:
+
+### Path Traversal Protection
+- Download paths are validated and must be within:
+  - User's home directory (`~`)
+  - `/tmp` directory
+  - Project's `downloads/` folder
+- Prevents writing files to arbitrary system locations
+
+### URL Validation
+- Only HTTPS URLs allowed (no HTTP)
+- Downloaded images must come from `replicate.delivery` domain only
+- Prevents SSRF (Server-Side Request Forgery) attacks
+- Validates redirect targets
+
+### Input Sanitization
+- Model IDs validated against allowlist
+- File paths normalized to prevent `../` attacks
+- Error messages sanitized to prevent information disclosure
+
+### Error Handling
+- Sensitive information (stack traces, paths) not exposed to clients
+- Detailed errors logged server-side for debugging
+- User-friendly error messages returned
+
+### Dependencies
+- Regular security audits via `npm audit`
+- Minimal dependency tree
+- Official MCP SDK and Replicate client only
+
 ## Troubleshooting
 
 **"REPLICATE_API_TOKEN is not set"**
