@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "flux-mcp": {
+      "command": "node",
+      "args": ["/absolute/path/to/flux-mcp-node/index.js"],
+      "env": {
+        "REPLICATE_API_TOKEN": "r8_your_token_here"
+      }
+    }
+  }
+}

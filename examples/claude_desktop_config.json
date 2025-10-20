@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "flux-mcp": {
+      "command": "npx",
+      "args": ["flux-mcp@latest"],
+      "env": {
+        "REPLICATE_API_TOKEN": "r8_your_token_here"
+      }
+    }
+  }
+}
