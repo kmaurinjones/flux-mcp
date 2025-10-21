@@ -33,7 +33,7 @@ claude mcp add flux-mcp --env REPLICATE_API_TOKEN=r8_your_token_here -- node /ab
 
 **From npm (after publishing):**
 ```bash
-claude mcp add flux-mcp --env REPLICATE_API_TOKEN=r8_your_token_here -- npx flux-mcp@latest
+claude mcp add --scope user flux-mcp --env REPLICATE_API_TOKEN=r8_your_token_here -- npx flux-mcp@latest
 ```
 
 ### Claude Desktop
