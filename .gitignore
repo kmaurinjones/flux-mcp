@@ -41,6 +41,9 @@ coverage/
 dist/
 build/
 
+# Sessions
+sessions/
+
 # Generated images (optional - uncomment if you want to ignore test outputs)
 # *.png
 # *.jpg
