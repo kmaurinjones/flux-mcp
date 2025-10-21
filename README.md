@@ -28,7 +28,7 @@ MCP server exposing [Replicate's FLUX](https://replicate.com/collections/flux) i
 **From local directory:**
 ```bash
 cd /path/to/flux-mcp-node
-claude mcp add flux-mcp --env REPLICATE_API_TOKEN=r8_your_token_here -- node /absolute/path/to/flux-mcp-node/index.js
+claude mcp add --scope user flux-mcp --env REPLICATE_API_TOKEN=r8_your_token_here -- node /absolute/path/to/flux-mcp-node/index.js
 ```
 
 **From npm (after publishing):**
